@@ -1,0 +1,111 @@
+#ifndef MYLIB_COROUTINE_TASK_H
+#define MYLIB_COROUTINE_TASK_H 1
+
+#include <coroutine>
+#include <utility>
+
+#include "symmetric_task_promise.hpp"
+
+namespace mylib {
+
+    namespace details {
+    
+        template<typename TaskType>
+        class task_promise : public mylib::symmetric_task_promise<typename TaskType::return_type>
+        {
+        public:
+            using task_type = TaskType;
+            using handle_type = std::coroutine_handle<task_promise>;
+            using return_type = typename task_type::return_type;
+
+            struct [[nodiscard]] final_awaiter
+            {
+                constexpr bool await_ready() const noexcept { return false; }
+
+                template<typename PromiseType>
+                std::coroutine_handle<> await_suspend(std::coroutine_handle<PromiseType> current_coroutine) noexcept {
+                    return static_cast<task_promise&>(current_coroutine.promise()).continuation;
+                }
+
+                void await_resume() const noexcept { std::unreachable(); }
+            };
+
+            task_type get_return_object() { return task_type(handle_type::from_promise(*this)); }
+            std::suspend_always initial_suspend() noexcept { return {}; }
+            final_awaiter final_suspend() noexcept { return {}; }
+
+            void set_continuation(std::coroutine_handle<> c) noexcept { continuation = c; }
+
+        private:
+            std::coroutine_handle<> continuation = std::noop_coroutine();
+        };
+
+    } // namespace mylib::details
+
+    template<typename ReturnType>
+    class task
+    {
+    public:
+        using return_type = ReturnType;
+        using promise_type = details::task_promise<task>;
+        using handle_type = typename promise_type::handle_type;
+
+        class [[nodiscard]] task_awaiter
+        {
+        public:
+            ~task_awaiter() { if (this->coroutine) { this->coroutine.destroy(); } }
+
+            [[nodiscard]] bool await_ready() noexcept { return !this->coroutine; }
+
+            template<typename PromiseType>
+            handle_type await_suspend(std::coroutine_handle<PromiseType> current) noexcept {
+                this->coroutine.promise().set_continuation(current);
+                return this->coroutine;
+            }
+
+            return_type await_resume() { return this->coroutine.promise().do_resume(); }
+
+        private:
+            friend task;
+            explicit task_awaiter(handle_type handle) noexcept : coroutine(handle) {}
+
+            handle_type coroutine = nullptr;
+        };
+
+        task(const task&) = delete;
+        task& operator=(const task&) = delete;
+
+        task(task&& other) noexcept : coroutine(std::exchange(other.coroutine, nullptr)) {}
+        task& operator=(task&& other) noexcept {
+            task().swap(other);
+            return *this;
+        }
+
+        void swap(task& other) noexcept {
+            std::ranges::swap(this->coroutine, other.coroutine);
+        }
+
+        ~task() { if (this->coroutine) { this->coroutine.destroy(); } }
+
+        task_awaiter operator co_await() && noexcept {
+            return task_awaiter(std::exchange(this->coroutine, nullptr));
+        }
+
+        // Test only
+        return_type sync_await() && {
+            task_awaiter awaiter = std::move(*this).operator co_await();
+            awaiter.await_suspend(std::noop_coroutine()).resume();
+            return awaiter.await_resume();
+        }
+
+    private:
+        friend promise_type;
+        task() = default;
+        explicit task(handle_type handle) noexcept : coroutine(handle) {}
+
+        handle_type coroutine = nullptr;
+    };
+
+} // namespace mylib
+
+#endif // MYLIB_COROUTINE_TASK_H
