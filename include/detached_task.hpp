@@ -79,10 +79,9 @@ namespace mylib {
 
             static void handle_destroyer(void* p) noexcept { handle_type::from_address(p).destroy(); }
 
-            explicit detached_task_unhandled_exit_exception(handle_type handle) :
-                std::exception(),
-                std::nested_exception(), // catch current exception
-                handle_holder(handle.address(), &handle_destroyer)
+            explicit detached_task_unhandled_exit_exception(handle_type handle)
+                // implicitly catch current exception via default init std::nested_exception
+                : handle_holder(handle.address(), &handle_destroyer)
             {}
 
             std::shared_ptr<void> handle_holder = nullptr;
