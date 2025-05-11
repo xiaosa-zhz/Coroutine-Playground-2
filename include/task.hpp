@@ -1,3 +1,4 @@
+#include <memory>
 #ifndef MYLIB_COROUTINE_TASK_H
 #define MYLIB_COROUTINE_TASK_H 1
 
@@ -82,6 +83,7 @@ namespace mylib {
         }
 
         void swap(task& other) noexcept {
+            if (this == std::addressof(other)) return;
             std::ranges::swap(this->coroutine, other.coroutine);
         }
 
