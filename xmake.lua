@@ -1,7 +1,7 @@
 add_rules("mode.debug", "mode.release")
 set_languages("c++26")
 set_encodings("utf-8")
-add_files("*.cpp")
+add_files("src/*.cpp")
 add_includedirs("include")
 
 target("gnu")
