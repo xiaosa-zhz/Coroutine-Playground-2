@@ -1,9 +1,9 @@
-#include <memory>
 #ifndef MYLIB_COROUTINE_TASK_H
 #define MYLIB_COROUTINE_TASK_H 1
 
 #include <coroutine>
 #include <utility>
+#include <memory>
 
 #include "symmetric_task_storage.hpp"
 
