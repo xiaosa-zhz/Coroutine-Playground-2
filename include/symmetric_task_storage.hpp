@@ -12,7 +12,7 @@ namespace mylib {
 
     namespace details {
 
-        struct symmetric_task_promise_base
+        struct symmetric_task_storage_base
         {
             constexpr static std::size_t empty = 0;
             constexpr static std::size_t value = 1;
@@ -37,12 +37,12 @@ namespace mylib {
     } // namespace mylib::details
 
     template<typename ReturnType>
-    class symmetric_task_promise : public details::symmetric_task_promise_base
+    class symmetric_task_storage : public details::symmetric_task_storage_base
     {
     public:
         using return_type = ReturnType;
     private:
-        using base = details::symmetric_task_promise_base;
+        using base = details::symmetric_task_storage_base;
         friend base;
         constexpr static bool return_reference = std::is_reference_v<return_type>;
     public:
@@ -74,10 +74,10 @@ namespace mylib {
 
     template<typename Void>
         requires (std::is_void_v<Void>)
-    class symmetric_task_promise<Void> : public details::symmetric_task_promise_base
+    class symmetric_task_storage<Void> : public details::symmetric_task_storage_base
     {
     private:
-        using base = details::symmetric_task_promise_base;
+        using base = details::symmetric_task_storage_base;
         friend base;
     public:
         using return_type = void;

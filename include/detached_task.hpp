@@ -10,7 +10,7 @@
 
 namespace mylib {
 
-    class detached_task
+    class [[nodiscard]] detached_task
     {
     private:
         struct detached_task_promise
@@ -94,6 +94,7 @@ namespace mylib {
             std::exchange(this->handle, nullptr).resume();
         }
 
+        [[nodiscard]]
         handle_type to_handle() && noexcept { return std::exchange(this->handle, nullptr); }
 
     private:

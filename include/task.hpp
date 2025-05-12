@@ -5,23 +5,28 @@
 #include <coroutine>
 #include <utility>
 
-#include "symmetric_task_promise.hpp"
+#include "symmetric_task_storage.hpp"
 
 namespace mylib {
 
     namespace details {
     
         template<typename TaskType>
-        class task_promise : public mylib::symmetric_task_promise<typename TaskType::return_type>
+        class task_promise : public mylib::symmetric_task_storage<typename TaskType::return_type>
         {
         public:
             using task_type = TaskType;
             using handle_type = std::coroutine_handle<task_promise>;
             using return_type = typename task_type::return_type;
 
+            // inherited from symmetric_task_storage:
+            // unhandled_exception
+            // return_value or return_void
+            // do_resume
+
             struct [[nodiscard]] final_awaiter
             {
-                constexpr bool await_ready() const noexcept { return false; }
+                bool await_ready() const noexcept { return false; }
 
                 template<typename PromiseType>
                 std::coroutine_handle<> await_suspend(std::coroutine_handle<PromiseType> current_coroutine) noexcept {
@@ -37,23 +42,18 @@ namespace mylib {
 
             void set_continuation(std::coroutine_handle<> c) noexcept { continuation = c; }
 
-        private:
+        protected:
             std::coroutine_handle<> continuation = std::noop_coroutine();
         };
 
-    } // namespace mylib::details
-
-    template<typename ReturnType>
-    class task
-    {
-    public:
-        using return_type = ReturnType;
-        using promise_type = details::task_promise<task>;
-        using handle_type = typename promise_type::handle_type;
-
+        template<typename TaskType>
         class [[nodiscard]] task_awaiter
         {
         public:
+            using task_type = TaskType;
+            using handle_type = typename task_type::handle_type;
+            using return_type = typename task_type::return_type;
+
             ~task_awaiter() { if (this->coroutine) { this->coroutine.destroy(); } }
 
             [[nodiscard]] bool await_ready() noexcept { return !this->coroutine; }
@@ -67,11 +67,22 @@ namespace mylib {
             return_type await_resume() { return this->coroutine.promise().do_resume(); }
 
         private:
-            friend task;
+            friend task_type;
             explicit task_awaiter(handle_type handle) noexcept : coroutine(handle) {}
 
             handle_type coroutine = nullptr;
         };
+
+    } // namespace mylib::details
+
+    template<typename ReturnType>
+    class [[nodiscard]] task
+    {
+    public:
+        using return_type = ReturnType;
+        using promise_type = details::task_promise<task>;
+        using handle_type = typename promise_type::handle_type;
+        using task_awaiter = details::task_awaiter<task>;
 
         task(const task&) = delete;
         task& operator=(const task&) = delete;
