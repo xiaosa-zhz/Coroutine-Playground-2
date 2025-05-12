@@ -88,7 +88,7 @@ namespace mylib {
 
         template<typename PromiseType>
         std::coroutine_handle<> await_suspend(std::coroutine_handle<PromiseType> current) noexcept {
-            // resume where the callcc_task itself was co_await-ed
+            // resume to the caller of callcc_task
             return this->handle.promise().get_continuation();
         }
 
