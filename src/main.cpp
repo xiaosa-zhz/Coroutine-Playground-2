@@ -1,6 +1,8 @@
+#include <coroutine>
 #include <print>
 #include <stdexcept>
 
+#include "semi_detached_task.hpp"
 #include "task.hpp"
 #include "detached_task.hpp"
 #include "callcc.hpp"
@@ -76,7 +78,35 @@ mylib::detached_task func_ex() {
     }
 }
 
+struct get_handle_awaiter : std::suspend_always
+{
+    template<typename PromiseType>
+    bool await_suspend(std::coroutine_handle<PromiseType> h) noexcept {
+        handle = h;
+        return false;
+    }
+
+    std::coroutine_handle<> handle = nullptr;
+};
+
+mylib::semi_detached_task<int> fork_func(get_handle_awaiter& a) {
+    noizy _{};
+    co_await a;
+    co_await mylib::fork_return(42);
+    std::println("Fork part");
+    // co_return;
+}
+
+mylib::detached_task test_fork(get_handle_awaiter& a) {
+    auto t = co_await fork_func(a);
+    std::println("Forked task result: {}", t);
+}
+
 int main() {
+    get_handle_awaiter a;
+    test_fork(a).start();
+    std::println("Resuming");
+    a.handle.resume();
     func().start();
     func_ex().start();
     try {

@@ -32,6 +32,22 @@ namespace mylib {
             void unhandled_exception(this auto&& self, exception_type e = std::current_exception()) noexcept {
                 self.storage.template emplace<exception>(std::move(e));
             }
+
+            std::size_t index(this auto&& self) noexcept {
+                return self.storage.index();
+            }
+
+            bool uninitialized(this auto&& self) noexcept {
+                return self.index() == empty;
+            }
+
+            bool has_exception(this auto&& self) noexcept {
+                return self.index() == exception;
+            }
+
+            bool has_value(this auto&& self) noexcept {
+                return self.index() == value;
+            }
         };
 
     } // namespace mylib::details

@@ -40,6 +40,8 @@ namespace mylib {
             std::suspend_always initial_suspend() noexcept { return {}; }
             final_awaiter final_suspend() noexcept { return {}; }
 
+            std::suspend_always yield_value() { return {}; }
+
             void set_continuation(std::coroutine_handle<> c) noexcept { continuation = c; }
 
         protected:
