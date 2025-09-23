@@ -3,6 +3,7 @@ set_languages("c++26")
 set_encodings("utf-8")
 add_files("src/*.cpp")
 add_includedirs("include")
+add_rules("plugin.compile_commands.autoupdate", {outputdir = ".vscode"})
 
 target("gnu")
     set_kind("binary")

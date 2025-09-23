@@ -56,6 +56,22 @@ namespace mylib {
             using handle_type = typename task_type::handle_type;
             using return_type = typename task_type::return_type;
 
+            task_awaiter(const task_awaiter&) = delete;
+            task_awaiter& operator=(const task_awaiter&) = delete;
+
+            void swap(task_awaiter& other) noexcept {
+                std::ranges::swap(this->coroutine, other.coroutine);
+            }
+
+            task_awaiter(task_awaiter&& other) noexcept
+                : coroutine(std::exchange(other.coroutine, nullptr))
+            {}
+
+            task_awaiter& operator=(task_awaiter&& other) noexcept {
+                task_awaiter().swap(other);
+                return *this;
+            }
+
             ~task_awaiter() { if (this->coroutine) { this->coroutine.destroy(); } }
 
             [[nodiscard]] bool await_ready() noexcept { return !this->coroutine; }
@@ -71,6 +87,8 @@ namespace mylib {
         private:
             friend task_type;
             explicit task_awaiter(handle_type handle) noexcept : coroutine(handle) {}
+
+            task_awaiter() = default;
 
             handle_type coroutine = nullptr;
         };

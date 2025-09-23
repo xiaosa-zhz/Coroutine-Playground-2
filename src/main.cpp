@@ -6,6 +6,7 @@
 #include "task.hpp"
 #include "detached_task.hpp"
 #include "callcc.hpp"
+#include "transaction.hpp"
 
 mylib::task<int> work() {
     std::println("Work, work");
@@ -102,7 +103,52 @@ mylib::detached_task test_fork(get_handle_awaiter& a) {
     std::println("Forked task result: {}", t);
 }
 
+struct fake_database
+{
+    mylib::task<void> transaction_begin() noexcept {
+        std::println("DB: Transaction begin");
+        co_return;
+    }
+
+    mylib::task<void> transaction_commit() noexcept {
+        std::println("DB: Transaction commit");
+        co_return;
+    }
+
+    mylib::task<void> transaction_rollback() noexcept {
+        std::println("DB: Transaction rollback");
+        co_return;
+    }
+
+    mylib::task<void> do_something() noexcept {
+        std::println("DB: Doing something");
+        co_return;
+    }
+};
+
+mylib::transaction<int> test_commit(fake_database& db) {
+    co_await db.do_something();
+    co_return 42;
+}
+
+mylib::transaction<int> test_rollback(fake_database& db) {
+    co_await db.do_something();
+    throw std::runtime_error("Error happened");
+}
+
+mylib::detached_task test_transaction() {
+    fake_database db{};
+    auto result = co_await test_commit(db);
+    std::println("Transaction committed with result: {}", result);
+    try {
+        co_await test_rollback(db);
+    } catch (std::exception& e) {
+        std::println("Transaction rolled back with exception: \"{}\"", e.what());
+    }
+}
+
 int main() {
+    test_transaction().start();
     get_handle_awaiter a;
     test_fork(a).start();
     std::println("Resuming");
