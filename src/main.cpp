@@ -137,6 +137,12 @@ mylib::transaction<int> test_rollback(fake_database& db) {
     throw std::runtime_error("Error happened");
 }
 
+mylib::transaction<int> test_eager_rollback(fake_database& db) {
+    co_await db.do_something();
+    co_await mylib::eager_rollback();
+    co_return -1;
+}
+
 mylib::detached_task test_transaction() {
     fake_database db{};
     auto result = co_await test_commit(db);
@@ -146,6 +152,8 @@ mylib::detached_task test_transaction() {
     } catch (std::exception& e) {
         std::println("Transaction rolled back with exception: \"{}\"", e.what());
     }
+    auto result1 = co_await test_eager_rollback(db);
+    std::println("Transaction eagerly rolled back with result: {}", result1);
 }
 
 int main() {

@@ -234,6 +234,10 @@ namespace mylib {
             co_await mylib::transaction_rollback(std::forward<Arg>(arg));
         }
 
+        inline mylib::task<void> noop_task() noexcept {
+            co_return;
+        }
+
         template<typename ReturnType>
         struct transaction_promise_base
         {
@@ -355,7 +359,15 @@ namespace mylib {
 
     consteval get_begin_result_tag begin_result() { return {}; }
 
+    struct eager_rollback_tag {};
+
+    consteval eager_rollback_tag eager_rollback() { return {}; }
+
     namespace details {
+
+        enum class transaction_status {
+            done, need_rollback, need_commit
+        };
 
         template<typename ReturnType>
         struct return_base
@@ -365,14 +377,18 @@ namespace mylib {
             
             template<typename Self>
             void return_value(this Self& self, return_type rt) noexcept requires (return_reference) {
-                self.need_rollback = false;
+                if (self.status != transaction_status::done) {
+                    self.status = transaction_status::need_commit;
+                }
                 self.storage.return_value(rt);
             }
 
             template<typename Self, typename U = return_type>
                 requires (not return_reference) && std::convertible_to<U, return_type> && std::constructible_from<return_type, U>
             void return_value(this Self& self, U&& rt) noexcept(std::is_nothrow_constructible_v<return_type, U>) {
-                self.need_rollback = false;
+                if (self.status != transaction_status::done) {
+                    self.status = transaction_status::need_commit;
+                }
                 self.storage.return_value(std::forward<U>(rt));
             }
         };
@@ -383,7 +399,9 @@ namespace mylib {
         {
             template<typename Self>
             void return_void(this Self& self) noexcept {
-                self.need_rollback = false;
+                if (self.status != transaction_status::done) {
+                    self.status = transaction_status::need_commit;
+                }
                 self.storage.return_void();
             }
         };
@@ -468,23 +486,36 @@ namespace mylib {
             };
 
             transaction_final_awaiter final_suspend() noexcept {
-                if (need_rollback) {
-                    need_rollback = false;
-                    return { rollback_task(first_arg).operator co_await(), this };
-                } else {
-                    return { commit_task(first_arg).operator co_await(), this };
+                switch (status) {
+                    case transaction_status::need_rollback:
+                        status = transaction_status::done;
+                        return { rollback_task(first_arg).operator co_await(), this };
+                    case transaction_status::need_commit:
+                        status = transaction_status::done;
+                        return { commit_task(first_arg).operator co_await(), this };
+                    case transaction_status::done:
+                        return { noop_task().operator co_await(), this };
+                    default:
+                        std::unreachable();
                 }
             }
 
             void unhandled_exception() noexcept { storage.unhandled_exception(); }
 
             ~transaction_promise() {
-                if (need_rollback) {
-                    try {
-                        detached_rollback_task(first_arg).start();
-                    } catch (...) {
-                        // swallow all exceptions
-                    }
+                switch (status) {
+                    case transaction_status::need_rollback:
+                        try {
+                            detached_rollback_task(first_arg).start();
+                        } catch (...) {
+                            // swallow all exceptions
+                        }
+                        [[fallthrough]];
+                    case transaction_status::done:
+                        return;
+                    case transaction_status::need_commit:
+                    default:
+                        std::unreachable();
                 }
             }
 
@@ -510,13 +541,37 @@ namespace mylib {
                 return begin_result_awaiter{ {}, &this->begin_result };
             }
 
+            struct eager_rollback_awaiter
+            {
+                final_task_awaiter_type awaiter;
+                promise_type* promise;
+
+                bool await_ready() const noexcept {
+                    if (promise->status == transaction_status::done) {
+                        return true;
+                    }
+                    return false;
+                }
+
+                std::coroutine_handle<> await_suspend(handle_type current) noexcept {
+                    promise->status = transaction_status::done;
+                    return awaiter.await_suspend(current);
+                }
+
+                constexpr void await_resume() const noexcept {}
+            };
+
+            eager_rollback_awaiter await_transform(mylib::eager_rollback_tag) noexcept {
+                return { rollback_task(first_arg).operator co_await(), this };
+            }
+
         private:
             Arg& first_arg;
             begin_task_handle_type begin_task_handle = nullptr;
             begin_result_storage_type begin_result;
             std::coroutine_handle<> continuation = std::noop_coroutine();
             mylib::symmetric_task_storage<return_type> storage;
-            bool need_rollback = true;
+            transaction_status status = transaction_status::need_rollback;
         };
 
     } // namespace mylib::details
