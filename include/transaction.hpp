@@ -246,7 +246,7 @@ namespace mylib {
         template<typename ReturnType>
         struct promise_deleter {
             static void operator() (transaction_promise_base<ReturnType>* p) noexcept {
-                if (p) { p->from_promise().destroy(); }
+                p->from_promise().destroy();
             }
         };
 
@@ -351,6 +351,10 @@ namespace mylib {
         handle_type handle = nullptr;
     };
 
+    struct get_begin_result_tag {};
+
+    consteval get_begin_result_tag begin_result() { return {}; }
+
     namespace details {
 
         template<typename ReturnType>
@@ -435,7 +439,7 @@ namespace mylib {
                     promise->begin_task_handle = awaiter.await_suspend(current);
                 }
 
-                constexpr void await_resume() const noexcept {
+                constexpr void await_resume() noexcept {
                     if constexpr (!std::is_void_v<begin_result_type>) {
                         promise->begin_result.template emplace<1>(awaiter.await_resume());
                     }
@@ -484,6 +488,28 @@ namespace mylib {
                 }
             }
 
+            // Forwarding overload
+            template<typename T>
+            T&& await_transform(T&& value) noexcept { return std::forward<T>(value); }
+
+            struct begin_result_awaiter : std::suspend_never
+            {
+                begin_result_storage_type* begin_result;
+
+                begin_result_type await_resume()
+                    noexcept(std::is_void_v<begin_result_type> || std::is_nothrow_move_constructible_v<begin_result_type>) {
+                    if constexpr (std::is_void_v<begin_result_type>) {
+                        return;
+                    } else {
+                        return std::move(*std::get_if<1>(begin_result));
+                    }
+                }
+            };
+
+            begin_result_awaiter await_transform(mylib::get_begin_result_tag) noexcept {
+                return begin_result_awaiter{ {}, &this->begin_result };
+            }
+
         private:
             Arg& first_arg;
             begin_task_handle_type begin_task_handle = nullptr;
@@ -500,7 +526,7 @@ namespace mylib {
 template<typename ReturnType, typename First, typename... Rests>
 struct std::coroutine_traits<mylib::transaction<ReturnType>, First, Rests...>
 {
-    using promise_type = mylib::details::transaction_promise<ReturnType, std::decay_t<First>>;
+    using promise_type = mylib::details::transaction_promise<ReturnType, std::remove_cvref_t<First>>;
 };
 
 #endif // MYLIB_TRANSACTION_H

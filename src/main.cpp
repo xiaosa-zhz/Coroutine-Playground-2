@@ -105,9 +105,9 @@ mylib::detached_task test_fork(get_handle_awaiter& a) {
 
 struct fake_database
 {
-    mylib::task<void> transaction_begin() noexcept {
+    mylib::task<int> transaction_begin() noexcept {
         std::println("DB: Transaction begin");
-        co_return;
+        co_return 114514;
     }
 
     mylib::task<void> transaction_commit() noexcept {
@@ -127,6 +127,7 @@ struct fake_database
 };
 
 mylib::transaction<int> test_commit(fake_database& db) {
+    std::println("Begin result: {}", co_await mylib::begin_result());
     co_await db.do_something();
     co_return 42;
 }
