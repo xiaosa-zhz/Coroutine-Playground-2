@@ -159,6 +159,9 @@ namespace mylib {
     inline constexpr details::transaction_commit_cpo transaction_commit{};
     inline constexpr details::transaction_rollback_cpo transaction_rollback{};
 
+    template<typename Arg>
+    concept transactional = details::has_begin<Arg> && details::has_commit<Arg> && details::has_rollback<Arg>;
+
     // Forward declaration
     template<typename ReturnType>
     class transaction;
@@ -578,7 +581,7 @@ namespace mylib {
 
 } // namespace mylib
 
-template<typename ReturnType, typename First, typename... Rests>
+template<typename ReturnType, mylib::transactional First, typename... Rests>
 struct std::coroutine_traits<mylib::transaction<ReturnType>, First, Rests...>
 {
     using promise_type = mylib::details::transaction_promise<ReturnType, std::remove_cvref_t<First>>;
