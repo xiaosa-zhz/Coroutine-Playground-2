@@ -274,17 +274,11 @@ namespace mylib {
             transaction_awaiter(const transaction_awaiter&) = delete;
             transaction_awaiter& operator=(const transaction_awaiter&) = delete;
 
+            transaction_awaiter(transaction_awaiter&& other) = default;
+            transaction_awaiter& operator=(transaction_awaiter&& other) = default;
+
             void swap(transaction_awaiter& other) noexcept {
                 std::ranges::swap(this->handle, other.handle);
-            }
-
-            transaction_awaiter(transaction_awaiter&& other) noexcept
-                : handle(std::exchange(other.handle, nullptr))
-            {}
-
-            transaction_awaiter& operator=(transaction_awaiter&& other) noexcept {
-                transaction_awaiter().swap(other);
-                return *this;
             }
 
             ~transaction_awaiter() = default;
@@ -307,8 +301,6 @@ namespace mylib {
                 : handle(std::move(handle))
             {}
 
-            transaction_awaiter() = default;
-
             handle_type handle = nullptr;
         };
 
@@ -324,17 +316,11 @@ namespace mylib {
         transaction(const transaction&) = delete;
         transaction& operator=(const transaction&) = delete;
 
+        transaction(transaction&& other) = default;
+        transaction& operator=(transaction&& other) = default;
+
         void swap(transaction& other) noexcept {
             std::ranges::swap(this->handle, other.handle);
-        }
-
-        transaction(transaction&& other) noexcept
-            : handle(std::exchange(other.handle, nullptr))
-        {}
-
-        transaction& operator=(transaction&& other) noexcept {
-            transaction().swap(other);
-            return *this;
         }
 
         ~transaction() = default;
@@ -352,8 +338,6 @@ namespace mylib {
         explicit transaction(handle_type&& handle) noexcept
             : handle(std::move(handle))
         {}
-
-        transaction() = default;
 
         handle_type handle = nullptr;
     };
