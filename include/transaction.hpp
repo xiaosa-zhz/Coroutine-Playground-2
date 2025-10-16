@@ -232,13 +232,15 @@ namespace mylib {
             co_await mylib::transaction_rollback(std::forward<Arg>(arg));
         }
 
-        template<typename Arg>
-        inline mylib::detached_task detached_rollback_task(Arg& arg) {
-            co_await mylib::transaction_rollback(std::forward<Arg>(arg));
-        }
-
         inline mylib::task<void> noop_task() noexcept {
             co_return;
+        }
+
+        using stopped_handler_type = std::coroutine_handle<>(*)(void*) noexcept;
+
+        [[noreturn]]
+        inline std::coroutine_handle<> default_stopped_handler(void*) noexcept {
+            std::terminate();
         }
 
         template<typename ReturnType>
@@ -248,6 +250,8 @@ namespace mylib {
             virtual std::coroutine_handle<> from_promise() noexcept = 0;
             virtual std::coroutine_handle<> transaction_suspend(std::coroutine_handle<>) noexcept = 0;
             virtual return_type do_resume() = 0;
+
+            stopped_handler_type caller_stopped_handler = &default_stopped_handler;
         };
 
         template<typename ReturnType>
@@ -285,7 +289,17 @@ namespace mylib {
 
             [[nodiscard]] bool await_ready() noexcept { return !this->handle; }
 
-            std::coroutine_handle<> await_suspend(std::coroutine_handle<> current) noexcept {
+            template<typename OtherPromise>
+            std::coroutine_handle<> await_suspend(std::coroutine_handle<OtherPromise> current) noexcept {
+                if constexpr (requires (OtherPromise& p) { p.unhandled_stopped(); }) {
+                    this->handle->caller_stopped_handler = +[](void* addr) static noexcept
+                        -> std::coroutine_handle<> {
+                        return std::coroutine_handle<OtherPromise>::from_address(addr)
+                            ->unhandled_stopped();
+                    };
+                } else {
+                    this->handle->caller_stopped_handler = &details::default_stopped_handler;
+                }
                 return this->handle->transaction_suspend(current);
             }
 
@@ -489,15 +503,26 @@ namespace mylib {
 
             void unhandled_exception() noexcept { storage.unhandled_exception(); }
 
+            std::coroutine_handle<> unhandled_stopped() noexcept {
+                std::coroutine_handle<> outer_handler = this->caller_stopped_handler(
+                    this->continuation.address()
+                );
+                switch (status) {
+                    case transaction_status::need_rollback:
+                        status = transaction_status::done;
+                        return rollback_task(first_arg).operator co_await().await_suspend(outer_handler);
+                    case transaction_status::done:
+                        return outer_handler;
+                    case transaction_status::need_commit:
+                    default:
+                        std::unreachable();
+                }
+            }
+
             ~transaction_promise() {
                 switch (status) {
                     case transaction_status::need_rollback:
-                        try {
-                            detached_rollback_task(first_arg).start();
-                        } catch (...) {
-                            // swallow all exceptions
-                        }
-                        [[fallthrough]];
+                        std::terminate();
                     case transaction_status::done:
                         return;
                     case transaction_status::need_commit:
