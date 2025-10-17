@@ -56,6 +56,9 @@ namespace mylib {
 
     namespace details {
 
+        // Forward declaration
+        inline std::coroutine_handle<> detached_task_stopped(std::coroutine_handle<>) noexcept;
+
         template<typename TaskType>
         struct detached_task_promise
         {
@@ -69,6 +72,10 @@ namespace mylib {
             void unhandled_exception() noexcept(false) {
                 // propagate exception to caller, executor, or whatever
                 throw detached_task_unhandled_exit_exception(handle_type::from_promise(*this));
+            }
+
+            std::coroutine_handle<> unhandled_stopped() noexcept {
+                return detached_task_stopped(handle_type::from_promise(*this));
             }
         };
 
@@ -116,6 +123,19 @@ namespace mylib {
     private:
         handle_type handle = nullptr;
     };
+
+    namespace details {
+
+        inline detached_task cleanup(std::coroutine_handle<> handle) {
+            handle.destroy();
+            co_return;
+        }
+
+        inline std::coroutine_handle<> detached_task_stopped(std::coroutine_handle<> handle) noexcept {
+            return cleanup(handle).to_handle();
+        }
+
+    } // namespace mylib::details
 
 } // namespace mylib
 

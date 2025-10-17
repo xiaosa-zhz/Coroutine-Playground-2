@@ -6,13 +6,16 @@
 #include <memory>
 
 #include "symmetric_task_storage.hpp"
+#include "cancellation.hpp"
 
 namespace mylib {
 
     namespace details {
     
         template<typename TaskType>
-        class task_promise : public mylib::symmetric_task_storage<typename TaskType::return_type>
+        class task_promise :
+            public mylib::symmetric_task_storage<typename TaskType::return_type>,
+            public mylib::cancellation_base
         {
         public:
             using task_type = TaskType;
@@ -30,7 +33,7 @@ namespace mylib {
 
                 template<typename PromiseType>
                 std::coroutine_handle<> await_suspend(std::coroutine_handle<PromiseType> current_coroutine) noexcept {
-                    return static_cast<task_promise&>(current_coroutine.promise()).continuation;
+                    return static_cast<task_promise&>(current_coroutine.promise()).get_continuation();
                 }
 
                 void await_resume() const noexcept { std::unreachable(); }
@@ -39,11 +42,6 @@ namespace mylib {
             task_type get_return_object() { return task_type(handle_type::from_promise(*this)); }
             std::suspend_always initial_suspend() noexcept { return {}; }
             final_awaiter final_suspend() noexcept { return {}; }
-
-            void set_continuation(std::coroutine_handle<> c) noexcept { continuation = c; }
-
-        protected:
-            std::coroutine_handle<> continuation = std::noop_coroutine();
         };
 
         template<typename TaskType>

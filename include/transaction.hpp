@@ -9,7 +9,7 @@
 #include <memory>
 
 #include "task.hpp"
-#include "detached_task.hpp"
+#include "cancellation.hpp"
 
 namespace mylib {
 
@@ -236,13 +236,6 @@ namespace mylib {
             co_return;
         }
 
-        using stopped_handler_type = std::coroutine_handle<>(*)(void*) noexcept;
-
-        [[noreturn]]
-        inline std::coroutine_handle<> default_stopped_handler(void*) noexcept {
-            std::terminate();
-        }
-
         template<typename ReturnType>
         struct transaction_promise_base
         {
@@ -251,7 +244,7 @@ namespace mylib {
             virtual std::coroutine_handle<> transaction_suspend(std::coroutine_handle<>) noexcept = 0;
             virtual return_type do_resume() = 0;
 
-            stopped_handler_type caller_stopped_handler = &default_stopped_handler;
+            mylib::stopped_handler_type caller_stopped_handler = &mylib::default_stopped_handler;
         };
 
         template<typename ReturnType>
@@ -295,10 +288,10 @@ namespace mylib {
                     this->handle->caller_stopped_handler = +[](void* addr) static noexcept
                         -> std::coroutine_handle<> {
                         return std::coroutine_handle<OtherPromise>::from_address(addr)
-                            ->unhandled_stopped();
+                            .promise().unhandled_stopped();
                     };
                 } else {
-                    this->handle->caller_stopped_handler = &details::default_stopped_handler;
+                    this->handle->caller_stopped_handler = &mylib::default_stopped_handler;
                 }
                 return this->handle->transaction_suspend(current);
             }

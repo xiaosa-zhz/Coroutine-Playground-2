@@ -62,12 +62,6 @@ namespace mylib {
             get_cc_awaiter await_transform(get_cc_tag) noexcept {
                 return get_cc_awaiter{ cc_type(handle_type::from_promise(*this)) };
             }
-
-        private:
-            friend cc_awaiter<return_type>;
-            std::coroutine_handle<> get_continuation() const noexcept {
-                return this->continuation;
-            }
         };
 
         template<typename ReturnType>
