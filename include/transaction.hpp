@@ -219,21 +219,26 @@ namespace mylib {
 
         template<typename Arg>
         inline mylib::task<await_result_t<begin_type<Arg>>> begin_task(Arg& arg) {
-            co_return co_await mylib::transaction_begin(std::forward<Arg>(arg));
+            co_return co_await mylib::transaction_begin(arg);
         }
 
         template<typename Arg>
         inline mylib::task<void> commit_task(Arg& arg) {
-            co_await mylib::transaction_commit(std::forward<Arg>(arg));
+            co_await mylib::transaction_commit(arg);
         }
 
         template<typename Arg>
         inline mylib::task<void> rollback_task(Arg& arg) {
-            co_await mylib::transaction_rollback(std::forward<Arg>(arg));
+            co_await mylib::transaction_rollback(arg);
         }
 
-        inline mylib::task<void> noop_task() noexcept {
+        inline mylib::task<void> noop_task() {
             co_return;
+        }
+
+        template<typename Arg>
+        inline mylib::cancellation_task cancellation_task(Arg& arg) {
+            co_await rollback_task(arg);
         }
 
         template<typename ReturnType>
@@ -244,7 +249,7 @@ namespace mylib {
             virtual std::coroutine_handle<> transaction_suspend(std::coroutine_handle<>) noexcept = 0;
             virtual return_type do_resume() = 0;
 
-            mylib::stopped_handler_type caller_stopped_handler = &mylib::default_stopped_handler;
+            mylib::stopped_handler_type caller_stopped_handler = &mylib::null_stopped_handler;
         };
 
         template<typename ReturnType>
@@ -285,13 +290,9 @@ namespace mylib {
             template<typename OtherPromise>
             std::coroutine_handle<> await_suspend(std::coroutine_handle<OtherPromise> current) noexcept {
                 if constexpr (requires (OtherPromise& p) { p.unhandled_stopped(); }) {
-                    this->handle->caller_stopped_handler = +[](void* addr) static noexcept
-                        -> std::coroutine_handle<> {
-                        return std::coroutine_handle<OtherPromise>::from_address(addr)
-                            .promise().unhandled_stopped();
-                    };
+                    this->handle->caller_stopped_handler = &mylib::forward_stopped_handler<OtherPromise>;
                 } else {
-                    this->handle->caller_stopped_handler = &mylib::default_stopped_handler;
+                    this->handle->caller_stopped_handler = &mylib::null_stopped_handler;
                 }
                 return this->handle->transaction_suspend(current);
             }
@@ -503,7 +504,7 @@ namespace mylib {
                 switch (status) {
                     case transaction_status::need_rollback:
                         status = transaction_status::done;
-                        return rollback_task(first_arg).operator co_await().await_suspend(outer_handler);
+                        return cancellation_task(first_arg).chain_cancel(outer_handler);
                     case transaction_status::done:
                         return outer_handler;
                     case transaction_status::need_commit:

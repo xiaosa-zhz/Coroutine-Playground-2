@@ -103,6 +103,19 @@ mylib::detached_task test_fork(get_handle_awaiter& a) {
     std::println("Forked task result: {}", t);
 }
 
+struct just_stopped
+{
+    constexpr bool await_ready() const noexcept { return false; }
+
+    template<typename PromiseType>
+    std::coroutine_handle<> await_suspend(std::coroutine_handle<PromiseType> h) noexcept {
+        return h.promise().unhandled_stopped();
+    }
+
+    [[noreturn]]
+    void await_resume() const noexcept { std::unreachable(); }
+};
+
 struct fake_database
 {
     mylib::task<int> transaction_begin() noexcept {
@@ -143,10 +156,18 @@ mylib::transaction<int> test_eager_rollback(fake_database& db) {
     co_return -1;
 }
 
+mylib::transaction<int> test_cancel_rollback(fake_database& db) {
+    co_await db.do_something();
+    noizy _ = {};
+    co_await just_stopped{};
+    std::println("Never reached");
+    co_return -1;
+}
+
 mylib::detached_task test_transaction() {
     fake_database db{};
-    auto result = co_await test_commit(db);
-    std::println("Transaction committed with result: {}", result);
+    auto result0 = co_await test_commit(db);
+    std::println("Transaction committed with result: {}", result0);
     try {
         co_await test_rollback(db);
     } catch (std::exception& e) {
@@ -154,10 +175,15 @@ mylib::detached_task test_transaction() {
     }
     auto result1 = co_await test_eager_rollback(db);
     std::println("Transaction eagerly rolled back with result: {}", result1);
+    noizy _ = {};
+    auto _ = co_await test_cancel_rollback(db);
+    std::println("Never reach here");
 }
 
 int main() {
+    std::println("Transaction test start.");
     test_transaction().start();
+    std::println("Transaction test finished.");
     get_handle_awaiter a;
     test_fork(a).start();
     std::println("Resuming");
