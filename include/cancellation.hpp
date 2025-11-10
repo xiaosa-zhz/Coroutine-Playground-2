@@ -22,8 +22,8 @@ namespace mylib {
     };
 
     // The default stopped handler which is set up during set continuation.
+    // Transparent to cancellation handling, would not apply another layer.
     // Forward the cancellation handle from caller of this coroutine.
-    // Would not apply another layer of stopped handling.
     template<has_unhandled_stopped PromiseType>
     inline std::coroutine_handle<> forward_stopped_handler(void* handle_ptr) noexcept {
         return std::coroutine_handle<PromiseType>::from_address(handle_ptr)
@@ -67,7 +67,8 @@ namespace mylib {
 
             std::suspend_always initial_suspend() noexcept { return {}; }
 
-            struct final_awaiter {
+            struct final_awaiter
+            {
                 constexpr bool await_ready() const noexcept { return false; }
                 
                 std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h) noexcept {
